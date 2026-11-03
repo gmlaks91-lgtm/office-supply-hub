@@ -201,21 +201,26 @@ export function StoragePanel({ store, focusSpotId }: Props) {
                 </span>
               </div>
             ))}
-            {entrances.map((ent) => (
-              <div
-                key={ent.id}
-                className="absolute flex items-center justify-center rounded text-[10px] font-bold text-white pointer-events-none"
-                style={{
-                  left: `${ent.x}%`,
-                  top: `${ent.y}%`,
-                  width: `${ent.w}%`,
-                  height: `${ent.h}%`,
-                  background: "#0f766e",
-                }}
-              >
-                ▼
-              </div>
-            ))}
+            {entrances.map((ent) => {
+              // 입구가 맵 아래쪽이면 안쪽(위)으로 들어가는 ▲, 위쪽이면 ▼
+              const entersUp = (ent.y ?? 0) > 50;
+              return (
+                <div
+                  key={ent.id}
+                  className="absolute flex flex-col items-center justify-center rounded text-[10px] font-bold text-white pointer-events-none leading-tight"
+                  style={{
+                    left: `${ent.x}%`,
+                    top: `${ent.y}%`,
+                    width: `${ent.w}%`,
+                    height: `${ent.h}%`,
+                    background: "#0f766e",
+                  }}
+                >
+                  <span>{entersUp ? "▲" : "▼"}</span>
+                  <span className="text-[9px] font-semibold opacity-95">입구</span>
+                </div>
+              );
+            })}
             {furniture.map((spot) => {
               const urgent = itemsForRoot(spot).some(
                 (i) => stockLevel(i) !== "ok"

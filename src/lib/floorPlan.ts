@@ -83,14 +83,12 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
     id: "standard",
     name: "표준형",
     description:
-      "입구→왼쪽 테이블·탕비실 · 직진 사무실 · 오른쪽 팀/회의 · 위쪽 가로 창고",
+      "팀 공간 아래 입구 · 작은 정사각 탕비실을 포함한 직사각 사무실 · 위 회의·창고",
     /**
-     * 입구(아래)에서 보면:
-     * - 바로 왼쪽: 테이블
-     * - 더 왼쪽: 작은 탕비실
-     * - 직진: 직사각형 사무실
-     * - 오른쪽: 위=회의실(세로 좁음), 아래=팀 공간(세로 넓음)
      * - 위: 가로로 긴 창고
+     * - 왼쪽 큰 직사각형 = 사무실, 그 안(왼쪽 위) 작은 정사각 = 탕비실
+     * - 오른쪽: 위=회의실, 아래=팀 공간, 팀 공간 밑=입구(안쪽으로 ▲)
+     * - 입구 바로 왼쪽: 테이블
      */
     rooms: [
       {
@@ -102,23 +100,24 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         h: 18,
         floor: "#e8e0d4",
       },
+      // 사무실을 먼저 그리고, 그 안 왼쪽 위 작은 정사각 탕비실을 위에 그림
+      {
+        id: "office",
+        label: "사무실",
+        x: 2,
+        y: 22,
+        w: 60,
+        h: 54,
+        floor: "#d4e8dc",
+      },
       {
         id: "pantry",
         label: "탕비실",
         x: 2,
         y: 22,
-        w: 18,
-        h: 42,
+        w: 16,
+        h: 16,
         floor: "#f5e6d4",
-      },
-      {
-        id: "office",
-        label: "사무실",
-        x: 22,
-        y: 22,
-        w: 40,
-        h: 54,
-        floor: "#d4e8dc",
       },
       {
         id: "meeting",
@@ -139,7 +138,8 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         floor: "#dceee4",
       },
     ],
-    entrance: { name: "입구", x: 34, y: 88, w: 18, h: 10 },
+    // 팀 공간 바로 아래 · 안으로 들어가는 방향
+    entrance: { name: "입구", x: 70, y: 84, w: 22, h: 10 },
     furniture: [
       // 입구 바로 왼쪽 테이블
       {
@@ -147,20 +147,20 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         name: "입구 옆 테이블",
         area: "사무실",
         kind: "meeting",
-        x: 10,
+        x: 46,
         y: 80,
-        w: 20,
+        w: 18,
         h: 10,
         color: "#8b7355",
       },
-      // 사무실 (직진)
+      // 사무실 (탕비실 정사각을 포함한 직사각 안)
       {
         mapKey: "cab-left",
         name: "사무실 문구 캐비닛",
         area: "사무실",
         kind: "cabinet",
-        x: 26,
-        y: 30,
+        x: 24,
+        y: 28,
         w: 16,
         h: 12,
         color: "#5b7c99",
@@ -171,8 +171,8 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         name: "사무실 서류 캐비닛",
         area: "사무실",
         kind: "cabinet",
-        x: 44,
-        y: 30,
+        x: 42,
+        y: 28,
         w: 16,
         h: 12,
         color: "#5b7c99",
@@ -183,8 +183,8 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         name: "공용 복합기",
         area: "사무실",
         kind: "printer",
-        x: 28,
-        y: 52,
+        x: 24,
+        y: 50,
         w: 12,
         h: 12,
         color: "#6a6a6a",
@@ -194,13 +194,13 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         name: "토너·용지 수납함",
         area: "사무실",
         kind: "bin",
-        x: 44,
-        y: 52,
+        x: 40,
+        y: 50,
         w: 12,
         h: 12,
         color: "#c45c26",
       },
-      // 회의실 (오른쪽 위 · 세로로 더 좁음)
+      // 회의실 (오른쪽 위)
       {
         mapKey: "meeting-shelf",
         name: "회의실 비품 선반",
@@ -212,7 +212,7 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         h: 14,
         color: "#6b8f71",
       },
-      // 팀 공간 (오른쪽 아래 · 세로로 더 넓음)
+      // 팀 공간 (오른쪽 아래 · 입구 위)
       {
         mapKey: "desk-a",
         name: "팀 책상 1",
@@ -422,7 +422,9 @@ export function areaFromPoint(
     h: r.h,
   }))
 ): string {
-  for (const room of rooms) {
+  // 나중에 그린(위에 올린·작은) 방부터 — 탕비실이 사무실 안에 있어도 탕비실로 인식
+  for (let i = rooms.length - 1; i >= 0; i--) {
+    const room = rooms[i];
     if (
       x >= room.x &&
       x <= room.x + room.w &&
