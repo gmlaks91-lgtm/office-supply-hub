@@ -134,3 +134,19 @@ do $$ begin
   alter table public.storage_spots drop constraint if exists storage_spots_map_key_key;
 exception when undefined_object then null;
 end $$;
+
+-- Realtime: 다른 기기와 재고·요청·사용기록 동기화
+-- 대시보드: Database → Publications → supabase_realtime 에서
+-- inventory_items / supply_requests / activity_log 를 Enable 하거나 아래 실행
+do $$ begin
+  alter publication supabase_realtime add table public.inventory_items;
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.supply_requests;
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.activity_log;
+exception when duplicate_object then null;
+end $$;

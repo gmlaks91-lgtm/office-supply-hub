@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { readActorName } from "./actor";
 import { parseInventoryCsv } from "./csv";
 import {
+  buildDemoBundle,
   buildDemoInventory,
   isDemoSeeded,
   markDemoSeeded,
@@ -43,20 +44,32 @@ import type {
 
 const ACTIVITY_CAP = 200;
 
-/** 빈 재고 + 미시드일 때만 예시 삽입 (기존 사용자 데이터 보존) */
-function maybeSeedDemoInventory(
+/** 로컬 데모: 빈 재고·미시드일 때만 비품+사용기록+요청 삽입 */
+function maybeSeedLocalDemo(
   spots: StorageSpot[],
   inventory: InventoryItem[],
+  activity: ActivityEntry[],
+  requests: SupplyRequest[],
   demoFlagKey: string
-): InventoryItem[] {
-  if (inventory.length > 0 || isDemoSeeded(demoFlagKey)) return inventory;
-  if (spots.filter((s) => s.kind !== "room" && s.kind !== "entrance").length === 0) {
-    return inventory;
+): {
+  inventory: InventoryItem[];
+  activity: ActivityEntry[];
+  requests: SupplyRequest[];
+} {
+  if (inventory.length > 0 || isDemoSeeded(demoFlagKey)) {
+    return { inventory, activity, requests };
   }
-  const demo = buildDemoInventory(spots);
-  if (demo.length === 0) return inventory;
+  if (
+    spots.filter((s) => s.kind !== "room" && s.kind !== "entrance").length === 0
+  ) {
+    return { inventory, activity, requests };
+  }
+  const bundle = buildDemoBundle(spots);
+  if (bundle.inventory.length === 0) {
+    return { inventory, activity, requests };
+  }
   markDemoSeeded(demoFlagKey);
-  return demo;
+  return bundle;
 }
 
 function uid(): string {
@@ -235,8 +248,9 @@ export function useOfficeStore() {
   const pushActivity = useCallback(
     async (entry: Omit<ActivityEntry, "id" | "created_at"> & { id?: string; created_at?: string }) => {
       const orgId = orgIdRef.current;
+      const localId = entry.id ?? uid();
       const row: ActivityEntry = {
-        id: entry.id ?? uid(),
+        id: localId,
         item_id: entry.item_id,
         item_name: entry.item_name,
         action: entry.action,
@@ -253,15 +267,29 @@ export function useOfficeStore() {
       });
       const sb = getSupabase();
       if (sb && isSupabaseConfigured()) {
-        void sb.from("activity_log").insert({
-          item_id: row.item_id,
-          item_name: row.item_name,
-          action: row.action,
-          delta: row.delta,
-          actor: row.actor,
-          note: row.note,
-          org_id: orgId,
-        });
+        const { data } = await sb
+          .from("activity_log")
+          .insert({
+            item_id: row.item_id,
+            item_name: row.item_name,
+            action: row.action,
+            delta: row.delta,
+            actor: row.actor,
+            note: row.note,
+            org_id: orgId,
+          })
+          .select()
+          .single();
+        if (data) {
+          const remote = data as ActivityEntry;
+          setActivity((prev) => {
+            const next = prev
+              .map((a) => (a.id === localId ? remote : a))
+              .slice(0, ACTIVITY_CAP);
+            persistActivity(next);
+            return next;
+          });
+        }
       }
     },
     [persistActivity]
@@ -281,15 +309,30 @@ export function useOfficeStore() {
     if (localSpots.length === 0) localSpots = seedSpots("standard", current.id);
     writeLS(k.spots, localSpots);
     setSpots(localSpots);
-    const localInv = maybeSeedDemoInventory(
+    const seeded = maybeSeedLocalDemo(
       localSpots,
       readLS(k.inv, []),
+      readLS(k.activity, []),
+      readLS(k.requests, []),
       k.demo
-    ).map((i) => ({ ...i, org_id: current.id }));
-    writeLS(k.inv, localInv.map((i) => normalizeInventory(i)));
-    setInventory(localInv.map((i) => normalizeInventory(i)));
-    setActivity(readLS<ActivityEntry[]>(k.activity, []));
-    setRequests(readLS<SupplyRequest[]>(k.requests, []));
+    );
+    const localInv = seeded.inventory.map((i) =>
+      normalizeInventory({ ...i, org_id: current.id })
+    );
+    const localActivity = seeded.activity.map((a) => ({
+      ...a,
+      org_id: current.id,
+    }));
+    const localRequests = seeded.requests.map((r) => ({
+      ...r,
+      org_id: current.id,
+    }));
+    writeLS(k.inv, localInv);
+    writeLS(k.activity, localActivity);
+    writeLS(k.requests, localRequests);
+    setInventory(localInv);
+    setActivity(localActivity);
+    setRequests(localRequests);
   }, []);
 
   const ensureRemoteOrg = useCallback(async (current: Organization) => {
@@ -478,6 +521,123 @@ export function useOfficeStore() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  /** Supabase Realtime — 같은 회사(org) 다른 기기 변경 반영 (로컬 데모는 구독 안 함) */
+  useEffect(() => {
+    if (!ready || usingLocal) return;
+    const sb = getSupabase();
+    const orgId = org?.id ?? orgIdRef.current;
+    if (!sb || !orgId || !isSupabaseConfigured()) return;
+
+    const channel = sb
+      .channel(`office-org-${orgId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "inventory_items",
+          filter: `org_id=eq.${orgId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const oldId = (payload.old as { id?: string }).id;
+            if (!oldId) return;
+            setInventory((prev) => {
+              const next = prev.filter((i) => i.id !== oldId);
+              persist(next);
+              return next;
+            });
+            return;
+          }
+          const raw = payload.new as InventoryItem;
+          if (!raw?.id) return;
+          const row = normalizeInventory(raw);
+          setInventory((prev) => {
+            const idx = prev.findIndex((i) => i.id === row.id);
+            const next =
+              idx >= 0
+                ? prev.map((i) => (i.id === row.id ? row : i))
+                : [row, ...prev];
+            persist(next);
+            return next;
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "supply_requests",
+          filter: `org_id=eq.${orgId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const oldId = (payload.old as { id?: string }).id;
+            if (!oldId) return;
+            setRequests((prev) => {
+              const next = prev.filter((r) => r.id !== oldId);
+              persistRequests(next);
+              return next;
+            });
+            return;
+          }
+          const row = payload.new as SupplyRequest;
+          if (!row?.id) return;
+          setRequests((prev) => {
+            const idx = prev.findIndex((r) => r.id === row.id);
+            const next =
+              idx >= 0
+                ? prev.map((r) => (r.id === row.id ? row : r))
+                : [row, ...prev];
+            persistRequests(next);
+            return next;
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "activity_log",
+          filter: `org_id=eq.${orgId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const oldId = (payload.old as { id?: string }).id;
+            if (!oldId) return;
+            setActivity((prev) => {
+              const next = prev.filter((a) => a.id !== oldId);
+              persistActivity(next);
+              return next;
+            });
+            return;
+          }
+          if (payload.eventType !== "INSERT" && payload.eventType !== "UPDATE") {
+            return;
+          }
+          const row = payload.new as ActivityEntry;
+          if (!row?.id) return;
+          setActivity((prev) => {
+            if (prev.some((a) => a.id === row.id)) {
+              const next = prev.map((a) => (a.id === row.id ? row : a));
+              persistActivity(next);
+              return next;
+            }
+            const next = [row, ...prev].slice(0, ACTIVITY_CAP);
+            persistActivity(next);
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void sb.removeChannel(channel);
+    };
+  }, [org?.id, persist, persistActivity, persistRequests, ready, usingLocal]);
 
   const applyLayoutTemplate = useCallback(
     async (id: string) => {
@@ -817,20 +977,30 @@ export function useOfficeStore() {
 
   const updateInventory = useCallback(
     async (id: string, patch: Partial<InventoryItem>) => {
+      const updated_at = new Date().toISOString();
+      const applyLocal = () => {
+        setInventory((prev) => {
+          const next = prev.map((i) =>
+            i.id === id ? { ...i, ...patch, updated_at } : i
+          );
+          persist(next);
+          return next;
+        });
+      };
+
       const sb = getSupabase();
       if (!sb || usingLocal) {
-        const next = inventory.map((i) =>
-          i.id === id ? { ...i, ...patch, updated_at: new Date().toISOString() } : i
-        );
-        setInventory(next);
-        persist(next);
+        applyLocal();
         return;
       }
-      const { error: err } = await sb.from("inventory_items").update(patch).eq("id", id);
+      const { error: err } = await sb
+        .from("inventory_items")
+        .update({ ...patch, updated_at })
+        .eq("id", id);
       if (err) throw err;
-      await refresh();
+      applyLocal();
     },
-    [inventory, persist, refresh, usingLocal]
+    [persist, usingLocal]
   );
 
   const removeInventory = useCallback(
@@ -1125,37 +1295,74 @@ export function useOfficeStore() {
     [addInventory, inventory, persist, pushActivity, refresh, usingLocal]
   );
 
-  /** 발표 리허설용: 위치는 유지하고 비품만 예시 세트로 교체 */
+  /** 발표 리허설용: 위치 유지, 비품·사용기록·요청을 예시로 교체 */
   const reseedDemoExamples = useCallback(async () => {
     const orgId = orgIdRef.current;
-    const demo = buildDemoInventory(spots).map((i) => ({
-      ...i,
-      org_id: orgId,
-    }));
+    const bundle = buildDemoBundle(spots);
+    const demo = bundle.inventory.map((i) => ({ ...i, org_id: orgId }));
+    const demoActivity = bundle.activity.map((a) => ({ ...a, org_id: orgId }));
+    const demoRequests = bundle.requests.map((r) => ({ ...r, org_id: orgId }));
     if (demo.length === 0) {
       setError("예시 비품을 넣을 칸이 없습니다. 표준형 레이아웃을 먼저 적용하세요.");
       return;
     }
     if (orgId) markDemoSeeded(orgStorageKeys(orgId).demo);
-    const sb = getSupabase();
-    if (!sb || usingLocal) {
+
+    const applyLocalBundle = () => {
       setInventory(demo);
       persist(demo);
+      setActivity(demoActivity);
+      persistActivity(demoActivity);
+      setRequests(demoRequests);
+      persistRequests(demoRequests);
       setError(null);
+    };
+
+    const sb = getSupabase();
+    if (!sb || usingLocal) {
+      applyLocalBundle();
       return;
     }
+
     if (orgId) {
-      await sb.from("inventory_items").delete().eq("org_id", orgId);
+      await Promise.all([
+        sb.from("inventory_items").delete().eq("org_id", orgId),
+        sb.from("activity_log").delete().eq("org_id", orgId),
+        sb.from("supply_requests").delete().eq("org_id", orgId),
+      ]);
     }
-    const rows = demo.map(({ id: _id, created_at: _c, updated_at: _u, ...rest }) => rest);
-    const { error: err } = await sb.from("inventory_items").insert(rows);
-    if (err) {
-      setError(err.message);
+    const invRows = demo.map(
+      ({ id: _id, created_at: _c, updated_at: _u, ...rest }) => rest
+    );
+    const { error: invErr } = await sb.from("inventory_items").insert(invRows);
+    if (invErr) {
+      setError(invErr.message);
       return;
     }
-    setError(null);
+    const actRows = demoActivity.map(
+      ({ id: _id, created_at: _c, ...rest }) => rest
+    );
+    const reqRows = demoRequests.map(
+      ({ id: _id, created_at: _c, ...rest }) => rest
+    );
+    await Promise.all([
+      actRows.length
+        ? sb.from("activity_log").insert(actRows)
+        : Promise.resolve(),
+      reqRows.length
+        ? sb.from("supply_requests").insert(reqRows)
+        : Promise.resolve(),
+    ]);
+    applyLocalBundle();
     await refresh();
-  }, [persist, refresh, spots, usingLocal]);
+  }, [
+    persist,
+    persistActivity,
+    persistRequests,
+    refresh,
+    spots,
+    usingLocal,
+  ]);
 
   const createOrganization = useCallback(
     async (name: string) => {

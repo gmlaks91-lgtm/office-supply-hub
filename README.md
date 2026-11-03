@@ -48,6 +48,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 테이블: `organizations`, `storage_spots`, `inventory_items`, `activity_log`, `supply_requests`  
 (기존 DB는 `schema.sql` 하단 ALTER / organizations 구간을 추가 실행)
 
+**Realtime (기기 간 동기화):** Database → Publications → `supabase_realtime`에서  
+`inventory_items`, `supply_requests`, `activity_log`를 Enable 하세요. (`schema.sql` 하단 SQL로도 가능)
+
 join_code 기반 회사 분리는 발표·내부용입니다. 운영 시에는 Supabase Auth + RLS를 권장합니다.
 
 ### (선택) 쿠팡 최저가

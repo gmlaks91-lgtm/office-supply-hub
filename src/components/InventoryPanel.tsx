@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { CoupangDeals } from "@/components/CoupangDeals";
+import { UseItemDialog } from "@/components/UseItemDialog";
 import { readActorName, writeActorName } from "@/lib/actor";
 import { CATEGORIES, seasonBannerForMonth } from "@/lib/defaults";
 import { expiryLabel, isExpiredDoc, isExpiringSoon } from "@/lib/docs";
 import { readSeasonPreviewMonth, readShowCoupang } from "@/lib/prefs";
-import { spotPath } from "@/lib/storage";
+import { selectableSpots, spotPath } from "@/lib/storage";
 import type { OfficeStore } from "@/lib/store";
 import {
   levelBorder,
@@ -42,14 +43,30 @@ export function InventoryPanel({ store, onLocate }: Props) {
   const [filter, setFilter] = useState<FilterId>("all");
   const [category, setCategory] = useState<string>("전체");
   const [useItem, setUseItem] = useState<InventoryItem | null>(null);
-  const [useActor, setUseActor] = useState("");
-  const [useNote, setUseNote] = useState("");
   const [reqItem, setReqItem] = useState<InventoryItem | null>(null);
   const [reqQty, setReqQty] = useState(1);
   const [reqNote, setReqNote] = useState("");
+  const [reqActor, setReqActor] = useState("");
   const [editDoc, setEditDoc] = useState<InventoryItem | null>(null);
   const [docParty, setDocParty] = useState("");
   const [docExpiry, setDocExpiry] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [addName, setAddName] = useState("");
+  const [addCategory, setAddCategory] = useState<string>("문구");
+  const [addQty, setAddQty] = useState(1);
+  const [addUnit, setAddUnit] = useState("개");
+  const [addMin, setAddMin] = useState(5);
+  const [addSpotId, setAddSpotId] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState("기타");
+  const [editUnit, setEditUnit] = useState("개");
+  const [editMin, setEditMin] = useState(0);
+
+  const locationChoices = useMemo(
+    () => selectableSpots(store.spots),
+    [store.spots]
+  );
 
   const lowItems = useMemo(
     () => sortByUrgency(store.inventory.filter((i) => stockLevel(i) !== "ok")),
@@ -106,20 +123,45 @@ export function InventoryPanel({ store, onLocate }: Props) {
     return item.location;
   };
 
-  const openUse = (item: InventoryItem) => {
-    setUseItem(item);
-    setUseActor(readActorName());
-    setUseNote("");
+  const openEdit = (item: InventoryItem) => {
+    setEditItem(item);
+    setEditName(item.name);
+    setEditCategory(item.category || "기타");
+    setEditUnit(item.unit || "개");
+    setEditMin(item.min_stock);
   };
 
-  const confirmUse = async () => {
-    if (!useItem) return;
-    writeActorName(useActor);
-    await store.adjustQuantity(useItem.id, -1, {
-      actor: useActor,
-      note: useNote.trim() || null,
+  const confirmAdd = async () => {
+    const name = addName.trim();
+    if (!name) return;
+    const spot = locationChoices.find((s) => s.id === addSpotId) ?? null;
+    await store.addInventory({
+      name,
+      category: addCategory,
+      quantity: Math.max(0, addQty),
+      min_stock: Math.max(0, addMin),
+      unit: addUnit.trim() || "개",
+      location: spot ? spot.area : "사무실",
+      storage_spot_id: spot?.id ?? null,
     });
-    setUseItem(null);
+    setShowAdd(false);
+    setAddName("");
+    setAddQty(1);
+    setAddMin(5);
+    setAddSpotId("");
+  };
+
+  const confirmEdit = async () => {
+    if (!editItem) return;
+    const name = editName.trim();
+    if (!name) return;
+    await store.updateInventory(editItem.id, {
+      name,
+      category: editCategory,
+      unit: editUnit.trim() || "개",
+      min_stock: Math.max(0, editMin),
+    });
+    setEditItem(null);
   };
 
   const openRequest = (item: InventoryItem) => {
@@ -127,14 +169,17 @@ export function InventoryPanel({ store, onLocate }: Props) {
     setReqItem(item);
     setReqQty(need);
     setReqNote("");
+    setReqActor(readActorName());
   };
 
   const confirmRequest = async () => {
     if (!reqItem) return;
+    writeActorName(reqActor);
     await store.requestSupply({
       item_id: reqItem.id,
       item_name: reqItem.name,
       quantity: reqQty,
+      requester: reqActor.trim() || undefined,
       note: reqNote.trim() || null,
     });
     setReqItem(null);
@@ -189,6 +234,19 @@ export function InventoryPanel({ store, onLocate }: Props) {
           </p>
         </button>
       )}
+
+      <button
+        type="button"
+        onClick={() => {
+          setShowAdd(true);
+          if (!addSpotId && locationChoices[0]) {
+            setAddSpotId(locationChoices[0].id);
+          }
+        }}
+        className="w-full rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-medium text-teal-900"
+      >
+        + 비품 추가
+      </button>
 
       <input
         value={q}
@@ -411,7 +469,8 @@ export function InventoryPanel({ store, onLocate }: Props) {
                         type="button"
                         className="h-8 w-8 rounded-lg bg-white border border-slate-200"
                         aria-label="사용"
-                        onClick={() => openUse(item)}
+                        disabled={item.quantity <= 0}
+                        onClick={() => setUseItem(item)}
                       >
                         −
                       </button>
@@ -453,6 +512,13 @@ export function InventoryPanel({ store, onLocate }: Props) {
                   <button
                     type="button"
                     className="text-xs rounded-lg bg-white border border-slate-200 px-2.5 py-1"
+                    onClick={() => openEdit(item)}
+                  >
+                    수정
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs rounded-lg bg-white border border-slate-200 px-2.5 py-1"
                     onClick={() => openRequest(item)}
                   >
                     요청
@@ -490,44 +556,179 @@ export function InventoryPanel({ store, onLocate }: Props) {
       )}
 
       {useItem && (
+        <UseItemDialog
+          key={useItem.id}
+          item={useItem}
+          onClose={() => setUseItem(null)}
+          onConfirm={async (actor, note) => {
+            await store.adjustQuantity(useItem.id, -1, { actor, note });
+          }}
+        />
+      )}
+
+      {showAdd && (
         <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-4 space-y-3 shadow-xl">
-            <h3 className="font-semibold text-slate-900">
-              「{useItem.name}」 사용
-            </h3>
-            <p className="text-xs text-slate-500">1개 차감 · 사용 기록에 남깁니다</p>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-4 space-y-3 shadow-xl max-h-[90dvh] overflow-y-auto">
+            <h3 className="font-semibold text-slate-900">비품 추가</h3>
             <label className="block text-xs text-slate-600">
               이름
               <input
-                value={useActor}
-                onChange={(e) => setUseActor(e.target.value)}
-                placeholder="예: 김민수"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                placeholder="예: A4 복사용지"
               />
             </label>
             <label className="block text-xs text-slate-600">
-              메모 (선택)
-              <input
-                value={useNote}
-                onChange={(e) => setUseNote(e.target.value)}
-                placeholder="예: 회의실 A"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
+              카테고리
+              <select
+                value={addCategory}
+                onChange={(e) => setAddCategory(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <label className="block text-xs text-slate-600">
+                수량
+                <input
+                  type="number"
+                  min={0}
+                  value={addQty}
+                  onChange={(e) => setAddQty(Math.max(0, Number(e.target.value) || 0))}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-xs text-slate-600">
+                단위
+                <input
+                  value={addUnit}
+                  onChange={(e) => setAddUnit(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-xs text-slate-600">
+                최소 재고
+                <input
+                  type="number"
+                  min={0}
+                  value={addMin}
+                  onChange={(e) => setAddMin(Math.max(0, Number(e.target.value) || 0))}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+            <label className="block text-xs text-slate-600">
+              보관 위치
+              <select
+                value={addSpotId}
+                onChange={(e) => setAddSpotId(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">위치 없음</option>
+                {locationChoices.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {spotPath(s, store.spots)}
+                  </option>
+                ))}
+              </select>
             </label>
             <div className="flex gap-2 pt-1">
               <button
                 type="button"
                 className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm"
-                onClick={() => setUseItem(null)}
+                onClick={() => setShowAdd(false)}
               >
                 취소
               </button>
               <button
                 type="button"
-                className="flex-1 rounded-xl bg-teal-800 text-white py-2.5 text-sm font-medium"
-                onClick={() => void confirmUse()}
+                className="flex-1 rounded-xl bg-teal-800 text-white py-2.5 text-sm font-medium disabled:opacity-50"
+                disabled={!addName.trim()}
+                onClick={() => void confirmAdd()}
               >
-                사용 확정
+                추가
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editItem && (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-4 space-y-3 shadow-xl">
+            <h3 className="font-semibold text-slate-900">비품 수정</h3>
+            <p className="text-xs text-slate-500">
+              수량은 카드의 −/+ 로만 바꿉니다 (현재 {editItem.quantity}
+              {editItem.unit})
+            </p>
+            <label className="block text-xs text-slate-600">
+              이름
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-xs text-slate-600">
+              카테고리
+              <select
+                value={editCategory}
+                onChange={(e) => setEditCategory(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+                {!CATEGORIES.includes(
+                  editCategory as (typeof CATEGORIES)[number]
+                ) && <option value={editCategory}>{editCategory}</option>}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-xs text-slate-600">
+                단위
+                <input
+                  value={editUnit}
+                  onChange={(e) => setEditUnit(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-xs text-slate-600">
+                최소 재고
+                <input
+                  type="number"
+                  min={0}
+                  value={editMin}
+                  onChange={(e) =>
+                    setEditMin(Math.max(0, Number(e.target.value) || 0))
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm"
+                onClick={() => setEditItem(null)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-teal-800 text-white py-2.5 text-sm font-medium disabled:opacity-50"
+                disabled={!editName.trim()}
+                onClick={() => void confirmEdit()}
+              >
+                저장
               </button>
             </div>
           </div>
@@ -545,6 +746,15 @@ export function InventoryPanel({ store, onLocate }: Props) {
               {reqItem.quantity}
               {reqItem.unit})
             </p>
+            <label className="block text-xs text-slate-600">
+              이름
+              <input
+                value={reqActor}
+                onChange={(e) => setReqActor(e.target.value)}
+                placeholder="예: 김민수"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
             <label className="block text-xs text-slate-600">
               수량
               <input

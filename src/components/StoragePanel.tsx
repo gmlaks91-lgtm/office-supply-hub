@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { UseItemDialog } from "@/components/UseItemDialog";
 import { QUICK_SUPPLIES } from "@/lib/defaults";
 import { printSpotLabel } from "@/lib/labelPrint";
 import {
@@ -29,7 +30,22 @@ export function StoragePanel({ store, focusSpotId }: Props) {
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [addName, setAddName] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  const [showMiniMap, setShowMiniMap] = useState(false);
+  const [showMiniMap, setShowMiniMap] = useState(true);
+  const [useItem, setUseItem] = useState<InventoryItem | null>(null);
+  const detailRef = useRef<HTMLElement | null>(null);
+
+  const scrollToDetail = () => {
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const selectFurniture = (spot: StorageSpot) => {
+    setSelectedId(spot.id);
+    setDrawerId(null);
+    setArea(spot.area);
+    scrollToDetail();
+  };
 
   const { childrenOf } = useMemo(
     () => groupSpotsByParent(store.spots),
@@ -101,6 +117,7 @@ export function StoragePanel({ store, focusSpotId }: Props) {
       setDrawerId(null);
       if (spot.kind !== "room" && spot.kind !== "entrance") setArea(spot.area);
     }
+    scrollToDetail();
   }, [focusSpotId, store.spots]);
 
   const addItem = async (
@@ -144,6 +161,95 @@ export function StoragePanel({ store, focusSpotId }: Props) {
         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm"
       />
 
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-slate-500">사무실 맵 · 부족 위치는 주황 테두리</p>
+        <button
+          type="button"
+          onClick={() => setShowMiniMap((v) => !v)}
+          className="text-xs font-medium text-teal-800 underline-offset-2 hover:underline"
+        >
+          {showMiniMap ? "맵 접기" : "맵 펼치기"}
+        </button>
+      </div>
+
+      {showMiniMap && (
+        <div className="relative w-full overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
+          <div
+            className="relative w-full bg-[#2a3544]"
+            style={{
+              aspectRatio: "1.15 / 1",
+              minHeight: "280px",
+              backgroundImage:
+                "linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)",
+              backgroundSize: "12px 12px",
+            }}
+          >
+            {rooms.map((room) => (
+              <div
+                key={room.id}
+                className="absolute rounded border border-slate-600/60 pointer-events-none"
+                style={{
+                  left: `${room.x}%`,
+                  top: `${room.y}%`,
+                  width: `${room.w}%`,
+                  height: `${room.h}%`,
+                  background: room.color ?? "#d4e8dc",
+                }}
+              >
+                <span className="absolute left-1.5 top-1 text-[11px] font-bold text-slate-800/90">
+                  {room.name}
+                </span>
+              </div>
+            ))}
+            {entrances.map((ent) => (
+              <div
+                key={ent.id}
+                className="absolute flex items-center justify-center rounded text-[10px] font-bold text-white pointer-events-none"
+                style={{
+                  left: `${ent.x}%`,
+                  top: `${ent.y}%`,
+                  width: `${ent.w}%`,
+                  height: `${ent.h}%`,
+                  background: "#0f766e",
+                }}
+              >
+                ▼
+              </div>
+            ))}
+            {furniture.map((spot) => {
+              const urgent = itemsForRoot(spot).some(
+                (i) => stockLevel(i) !== "ok"
+              );
+              const active = selectedId === spot.id;
+              return (
+                <button
+                  key={spot.id}
+                  type="button"
+                  onClick={() => selectFurniture(spot)}
+                  className={`absolute rounded px-0.5 text-[10px] sm:text-[11px] font-bold text-white leading-snug overflow-hidden ${
+                    active
+                      ? "ring-2 ring-amber-300 z-10"
+                      : urgent
+                        ? "border-2 border-orange-400 shadow-[0_0_0_1px_rgba(251,146,60,0.5)]"
+                        : "border border-black/30"
+                  }`}
+                  style={{
+                    left: `${spot.x}%`,
+                    top: `${spot.y}%`,
+                    width: `${spot.w}%`,
+                    height: `${spot.h}%`,
+                    background: spot.color ?? "#64748b",
+                  }}
+                  title={spot.name}
+                >
+                  {spot.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-2 overflow-x-auto pb-1">
         <button
           type="button"
@@ -172,84 +278,6 @@ export function StoragePanel({ store, focusSpotId }: Props) {
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setShowMiniMap((v) => !v)}
-        className="text-xs text-teal-800 underline-offset-2 hover:underline"
-      >
-        {showMiniMap ? "미니 맵 접기" : "미니 맵 펼치기 (참고)"}
-      </button>
-
-      {showMiniMap && (
-        <div className="relative w-full overflow-hidden rounded-2xl border-2 border-slate-300 opacity-90">
-          <div
-            className="relative w-full bg-[#2a3544]"
-            style={{
-              aspectRatio: "1.4 / 1",
-              backgroundImage:
-                "linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)",
-              backgroundSize: "10px 10px",
-            }}
-          >
-            {rooms.map((room) => (
-              <div
-                key={room.id}
-                className="absolute rounded border border-slate-600/60 pointer-events-none"
-                style={{
-                  left: `${room.x}%`,
-                  top: `${room.y}%`,
-                  width: `${room.w}%`,
-                  height: `${room.h}%`,
-                  background: room.color ?? "#d4e8dc",
-                }}
-              >
-                <span className="absolute left-1 top-0.5 text-[8px] font-bold text-slate-800/80">
-                  {room.name}
-                </span>
-              </div>
-            ))}
-            {entrances.map((ent) => (
-              <div
-                key={ent.id}
-                className="absolute flex items-center justify-center rounded text-[8px] font-bold text-white pointer-events-none"
-                style={{
-                  left: `${ent.x}%`,
-                  top: `${ent.y}%`,
-                  width: `${ent.w}%`,
-                  height: `${ent.h}%`,
-                  background: "#0f766e",
-                }}
-              >
-                ▼
-              </div>
-            ))}
-            {furniture.map((spot) => (
-              <button
-                key={spot.id}
-                type="button"
-                onClick={() => {
-                  setSelectedId(spot.id);
-                  setDrawerId(null);
-                  setArea(spot.area);
-                }}
-                className={`absolute rounded border text-[7px] font-bold text-white leading-tight ${
-                  selectedId === spot.id ? "ring-2 ring-amber-300" : "border-black/30"
-                }`}
-                style={{
-                  left: `${spot.x}%`,
-                  top: `${spot.y}%`,
-                  width: `${spot.w}%`,
-                  height: `${spot.h}%`,
-                  background: spot.color ?? "#64748b",
-                }}
-              >
-                {spot.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {filteredRoots.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500 text-sm">
           {q || area !== "전체"
@@ -273,6 +301,7 @@ export function StoragePanel({ store, focusSpotId }: Props) {
                     } else {
                       setSelectedId(root.id);
                       setDrawerId(null);
+                      scrollToDetail();
                     }
                   }}
                   className={`w-full text-left rounded-2xl border bg-white p-4 shadow-sm transition ${
@@ -334,7 +363,10 @@ export function StoragePanel({ store, focusSpotId }: Props) {
       )}
 
       {selected && (
-        <section className="rounded-3xl border border-teal-200 bg-white p-4 shadow-lg space-y-3">
+        <section
+          ref={detailRef}
+          className="rounded-3xl border border-teal-200 bg-white p-4 shadow-lg space-y-3 scroll-mt-4"
+        >
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-[11px] text-teal-700">
@@ -427,11 +459,9 @@ export function StoragePanel({ store, focusSpotId }: Props) {
                     <button
                       type="button"
                       className="h-7 w-7 rounded-lg border bg-white text-sm"
-                      onClick={() =>
-                        void store.updateInventory(item.id, {
-                          quantity: Math.max(0, item.quantity - 1),
-                        })
-                      }
+                      aria-label="사용"
+                      disabled={item.quantity <= 0}
+                      onClick={() => setUseItem(item)}
                     >
                       −
                     </button>
@@ -441,11 +471,8 @@ export function StoragePanel({ store, focusSpotId }: Props) {
                     <button
                       type="button"
                       className="h-7 w-7 rounded-lg border bg-white text-sm"
-                      onClick={() =>
-                        void store.updateInventory(item.id, {
-                          quantity: item.quantity + 1,
-                        })
-                      }
+                      aria-label="추가"
+                      onClick={() => void store.adjustQuantity(item.id, 1)}
                     >
                       +
                     </button>
@@ -505,6 +532,17 @@ export function StoragePanel({ store, focusSpotId }: Props) {
         <p className="text-center text-sm text-teal-800 bg-teal-50 rounded-xl py-2">
           {toast}
         </p>
+      )}
+
+      {useItem && (
+        <UseItemDialog
+          key={useItem.id}
+          item={useItem}
+          onClose={() => setUseItem(null)}
+          onConfirm={async (actor, note) => {
+            await store.adjustQuantity(useItem.id, -1, { actor, note });
+          }}
+        />
       )}
     </div>
   );

@@ -35,7 +35,7 @@ export function SettingsPanel({ store }: Props) {
   async function onReseed() {
     if (
       !confirm(
-        "비품 재고를 예시 데이터로 바꿀까요?\n(위치는 그대로 두고, 기존 비품 목록만 교체됩니다.)"
+        "예시 데이터로 바꿀까요?\n위치는 그대로 두고, 기존 비품·사용 기록·요청이 모두 지워진 뒤 시연용 데이터로 채워집니다."
       )
     ) {
       return;
@@ -334,8 +334,8 @@ export function SettingsPanel({ store }: Props) {
       <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
         <h3 className="font-medium text-slate-900">예시 데이터</h3>
         <p className="text-sm text-slate-600">
-          발표·리허설용으로 칸별 비품 예시를 다시 넣습니다. 위치는 유지되고 비품만
-          교체됩니다.
+          발표·리허설용으로 비품·사용 기록·요청 예시를 다시 넣습니다. 위치는
+          유지되고 기존 목록은 교체됩니다.
         </p>
         <button
           type="button"

@@ -13,12 +13,12 @@ export function makeJoinCode(len = 6): string {
 
 export function orgStorageKeys(orgId: string) {
   return {
-    inv: `office_inventory_v4_${orgId}`,
+    inv: `office_inventory_v5_${orgId}`,
     spots: `office_storage_spots_v6_${orgId}`,
     layout: `office_layout_id_v1_${orgId}`,
-    activity: `office_activity_v1_${orgId}`,
-    requests: `office_requests_v1_${orgId}`,
-    demo: `office_demo_seeded_v3_${orgId}`,
+    activity: `office_activity_v2_${orgId}`,
+    requests: `office_requests_v2_${orgId}`,
+    demo: `office_demo_seeded_v4_${orgId}`,
   };
 }
 
