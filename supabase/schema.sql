@@ -48,6 +48,8 @@ create table if not exists public.inventory_items (
   location text not null default '사무실',
   storage_spot_id uuid references public.storage_spots(id) on delete set null,
   notes text,
+  counterparty text,
+  expires_on date,
   org_id uuid references public.organizations(id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -125,6 +127,8 @@ alter table public.storage_spots add column if not exists org_id uuid references
 alter table public.inventory_items add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 alter table public.activity_log add column if not exists org_id uuid references public.organizations(id) on delete cascade;
 alter table public.supply_requests add column if not exists org_id uuid references public.organizations(id) on delete cascade;
+alter table public.inventory_items add column if not exists counterparty text;
+alter table public.inventory_items add column if not exists expires_on date;
 -- map_key 전역 unique 제거(회사별 unique로 대체) — 없으면 무시됨
 do $$ begin
   alter table public.storage_spots drop constraint if exists storage_spots_map_key_key;

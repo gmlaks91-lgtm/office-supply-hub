@@ -83,6 +83,9 @@ export function CoupangDeals({ keyword }: Props) {
       >
         쿠팡에서 찾기
       </a>
+      <p className="text-[10px] text-amber-800/60 leading-snug">
+        쿠팡 파트너스 활동을 통해 일정액의 수수료를 제공받을 수 있습니다.
+      </p>
     </div>
   );
 }

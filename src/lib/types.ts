@@ -37,6 +37,10 @@ export type InventoryItem = {
   location: string;
   storage_spot_id: string | null;
   notes: string | null;
+  /** 서류 등: 거래처·업체명 */
+  counterparty: string | null;
+  /** 서류 등: 만료일 YYYY-MM-DD */
+  expires_on: string | null;
   org_id?: string | null;
   created_at: string;
   updated_at: string;

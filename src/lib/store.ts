@@ -8,6 +8,8 @@ import {
   isDemoSeeded,
   markDemoSeeded,
 } from "./demoSeed";
+import { lowStockPayload, sendLowStockNotify } from "./notify";
+import { stockLevel } from "./stock";
 import {
   areaFromPoint,
   FURNITURE_PALETTE,
@@ -28,6 +30,7 @@ import {
   defaultDrawerNames,
   layoutToSpotSeeds,
   mapRooms,
+  spotPath,
 } from "./storage";
 import { getSupabase, isSupabaseConfigured } from "./supabase";
 import type {
@@ -94,6 +97,25 @@ function normalizeSpot(s: Partial<StorageSpot> & { id: string; name: string }): 
   };
 }
 
+function normalizeInventory(i: Partial<InventoryItem> & { id: string; name: string }): InventoryItem {
+  return {
+    id: i.id,
+    name: i.name,
+    category: i.category ?? "기타",
+    quantity: i.quantity ?? 0,
+    min_stock: i.min_stock ?? 0,
+    unit: i.unit ?? "개",
+    location: i.location ?? "사무실",
+    storage_spot_id: i.storage_spot_id ?? null,
+    notes: i.notes ?? null,
+    counterparty: i.counterparty ?? null,
+    expires_on: i.expires_on ?? null,
+    org_id: i.org_id ?? null,
+    created_at: i.created_at ?? new Date().toISOString(),
+    updated_at: i.updated_at ?? new Date().toISOString(),
+  };
+}
+
 function seedSpots(layoutId = "standard", orgId?: string | null): StorageSpot[] {
   const layout = getLayout(layoutId);
   const now = new Date().toISOString();
@@ -112,7 +134,11 @@ function seedSpots(layoutId = "standard", orgId?: string | null): StorageSpot[] 
     const tpl = layout.furniture.find((t) => seed.map_key?.endsWith(t.mapKey));
     const def = FURNITURE_PALETTE.find((f) => f.kind === seed.kind);
     const n = tpl?.drawers ?? def?.drawers ?? 0;
-    defaultDrawerNames(n).forEach((name, idx) => {
+    const names =
+      tpl?.drawerNames && tpl.drawerNames.length > 0
+        ? tpl.drawerNames
+        : defaultDrawerNames(n);
+    names.forEach((name, idx) => {
       seeded.push(
         normalizeSpot({
           id: uid(),
@@ -260,8 +286,8 @@ export function useOfficeStore() {
       readLS(k.inv, []),
       k.demo
     ).map((i) => ({ ...i, org_id: current.id }));
-    writeLS(k.inv, localInv);
-    setInventory(localInv);
+    writeLS(k.inv, localInv.map((i) => normalizeInventory(i)));
+    setInventory(localInv.map((i) => normalizeInventory(i)));
     setActivity(readLS<ActivityEntry[]>(k.activity, []));
     setRequests(readLS<SupplyRequest[]>(k.requests, []));
   }, []);
@@ -397,7 +423,9 @@ export function useOfficeStore() {
     setSpots(remoteSpots);
     writeLS(k.spots, remoteSpots);
 
-    let remoteInv = (inv.data as InventoryItem[]) ?? [];
+    let remoteInv = ((inv.data as InventoryItem[]) ?? []).map((i) =>
+      normalizeInventory(i)
+    );
     if (remoteInv.length === 0 && !isDemoSeeded(k.demo) && remoteSpots.length > 0) {
       const demo = buildDemoInventory(remoteSpots).map((i) => ({
         ...i,
@@ -706,6 +734,8 @@ export function useOfficeStore() {
       location: string;
       storage_spot_id: string | null;
       notes?: string | null;
+      counterparty?: string | null;
+      expires_on?: string | null;
     }) => {
       const now = new Date().toISOString();
       const orgId = orgIdRef.current;
@@ -719,6 +749,8 @@ export function useOfficeStore() {
         location: input.location,
         storage_spot_id: input.storage_spot_id,
         notes: input.notes ?? null,
+        counterparty: input.counterparty?.trim() || null,
+        expires_on: input.expires_on?.trim() || null,
         org_id: orgId,
         created_at: now,
         updated_at: now,
@@ -772,6 +804,8 @@ export function useOfficeStore() {
           location: row.location,
           storage_spot_id: row.storage_spot_id,
           notes: row.notes,
+          counterparty: row.counterparty,
+          expires_on: row.expires_on,
           org_id: orgId,
         });
         if (err) throw err;
@@ -842,9 +876,11 @@ export function useOfficeStore() {
     ) => {
       const item = inventory.find((i) => i.id === id);
       if (!item || delta === 0) return;
+      const wasOk = stockLevel(item) === "ok";
       const nextQty = Math.max(0, item.quantity + delta);
       const applied = nextQty - item.quantity;
       if (applied === 0) return;
+      const nextItem = { ...item, quantity: nextQty };
       await updateInventory(id, { quantity: nextQty });
       await pushActivity({
         item_id: item.id,
@@ -854,8 +890,49 @@ export function useOfficeStore() {
         actor: (opts?.actor ?? readActorName()) || null,
         note: opts?.note ?? null,
       });
+      // 정상 → 부족으로 바뀌면 알림 시도 (쿨다운·미설정 시 무시)
+      if (wasOk && stockLevel(nextItem) !== "ok" && applied < 0) {
+        const place = item.storage_spot_id
+          ? (() => {
+              const s = spots.find((x) => x.id === item.storage_spot_id);
+              return s ? spotPath(s, spots) : item.location;
+            })()
+          : item.location;
+        void sendLowStockNotify({
+          items: [
+            {
+              id: item.id,
+              name: item.name,
+              quantity: nextQty,
+              min_stock: item.min_stock,
+              unit: item.unit,
+              location: place,
+              category: item.category,
+            },
+          ],
+          orgName: orgIdRef.current ? org?.name : null,
+        }).catch(() => undefined);
+      }
     },
-    [inventory, pushActivity, updateInventory]
+    [inventory, org?.name, pushActivity, spots, updateInventory]
+  );
+
+  const notifyLowStockNow = useCallback(
+    async (force = true) => {
+      const items = lowStockPayload(inventory, (item) => {
+        if (item.storage_spot_id) {
+          const s = spots.find((x) => x.id === item.storage_spot_id);
+          if (s) return spotPath(s, spots);
+        }
+        return item.location;
+      });
+      return sendLowStockNotify({
+        items,
+        orgName: org?.name,
+        force,
+      });
+    },
+    [inventory, org?.name, spots]
   );
 
   const requestSupply = useCallback(
@@ -987,6 +1064,8 @@ export function useOfficeStore() {
                   category: row.category,
                   unit: row.unit,
                   notes: row.notes ?? i.notes,
+                  counterparty: row.counterparty ?? i.counterparty,
+                  expires_on: row.expires_on ?? i.expires_on,
                   updated_at: now,
                 }
               : i
@@ -1003,6 +1082,8 @@ export function useOfficeStore() {
               location: row.location,
               storage_spot_id: null,
               notes: row.notes,
+              counterparty: row.counterparty,
+              expires_on: row.expires_on,
               created_at: now,
               updated_at: now,
             },
@@ -1025,6 +1106,8 @@ export function useOfficeStore() {
             location: row.location,
             storage_spot_id: null,
             notes: row.notes,
+            counterparty: row.counterparty,
+            expires_on: row.expires_on,
           });
         }
         await refresh();
@@ -1166,6 +1249,7 @@ export function useOfficeStore() {
     reseedDemoExamples,
     createOrganization,
     joinOrganization,
+    notifyLowStockNow,
   };
 }
 

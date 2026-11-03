@@ -13,12 +13,12 @@ export function makeJoinCode(len = 6): string {
 
 export function orgStorageKeys(orgId: string) {
   return {
-    inv: `office_inventory_v3_${orgId}`,
-    spots: `office_storage_spots_v5_${orgId}`,
+    inv: `office_inventory_v4_${orgId}`,
+    spots: `office_storage_spots_v6_${orgId}`,
     layout: `office_layout_id_v1_${orgId}`,
     activity: `office_activity_v1_${orgId}`,
     requests: `office_requests_v1_${orgId}`,
-    demo: `office_demo_seeded_v1_${orgId}`,
+    demo: `office_demo_seeded_v3_${orgId}`,
   };
 }
 
@@ -58,9 +58,27 @@ export function writeCurrentOrg(org: Organization) {
   localStorage.setItem(LS_ORG, JSON.stringify(org));
 }
 
+function isRetiredDemoBranch(o: Organization): boolean {
+  return (
+    o.id === "demo-branch-seoul" ||
+    o.id === "demo-branch-busan" ||
+    o.name === "서울지점" ||
+    o.name === "부산지점"
+  );
+}
+
 export function ensureDefaultOrg(): Organization {
   let orgs = readOrgs();
+  const cleaned = orgs.filter((o) => !isRetiredDemoBranch(o));
+  if (cleaned.length !== orgs.length) {
+    orgs = cleaned;
+    writeOrgs(orgs);
+  }
+
   let current = readCurrentOrg();
+  if (current && isRetiredDemoBranch(current)) {
+    current = null;
+  }
   if (current && orgs.some((o) => o.id === current!.id)) return current;
 
   if (orgs.length === 0) {

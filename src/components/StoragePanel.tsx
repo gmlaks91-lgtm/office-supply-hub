@@ -59,7 +59,8 @@ export function StoragePanel({ store, focusSpotId }: Props) {
       const hitItem = items.some(
         (i) =>
           i.name.toLowerCase().includes(needle) ||
-          i.category.toLowerCase().includes(needle)
+          i.category.toLowerCase().includes(needle) ||
+          (i.counterparty ?? "").toLowerCase().includes(needle)
       );
       const hitDrawer = (childrenOf[root.id] ?? []).some((d) =>
         d.name.toLowerCase().includes(needle)

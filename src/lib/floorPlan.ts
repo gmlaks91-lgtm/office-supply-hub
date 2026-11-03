@@ -64,6 +64,8 @@ export type TemplateFurniture = {
   h: number;
   color: string;
   drawers?: number;
+  /** 있으면 기본 「N번 서랍」 대신 이 이름 사용 */
+  drawerNames?: string[];
 };
 
 export type OfficeLayoutTemplate = {
@@ -100,7 +102,20 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
       { mapKey: "toner-bin", name: "토너·용지 수납함", area: "인쇄실", kind: "bin", x: 86, y: 46, w: 10, h: 12, color: "#c45c26" },
       { mapKey: "steel-a", name: "창고 철제장 1열", area: "비품 창고", kind: "cabinet", x: 8, y: 76, w: 20, h: 14, color: "#7a8590", drawers: 4 },
       { mapKey: "steel-b", name: "창고 철제장 2열", area: "비품 창고", kind: "cabinet", x: 36, y: 76, w: 20, h: 14, color: "#7a8590", drawers: 4 },
-      { mapKey: "box-corner", name: "입고 대기 박스존", area: "비품 창고", kind: "bin", x: 66, y: 76, w: 26, h: 14, color: "#c4a35a" },
+      {
+        mapKey: "client-cab",
+        name: "거래처 서류 캐비닛",
+        area: "비품 창고",
+        kind: "cabinet",
+        x: 60,
+        y: 76,
+        w: 18,
+        h: 14,
+        color: "#4a6fa5",
+        drawers: 2,
+        drawerNames: ["가~사 거래처", "아~하 거래처"],
+      },
+      { mapKey: "box-corner", name: "입고 대기 박스존", area: "비품 창고", kind: "bin", x: 80, y: 76, w: 16, h: 14, color: "#c4a35a" },
     ],
   },
   {

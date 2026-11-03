@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 import { CoupangDeals } from "@/components/CoupangDeals";
 import { readActorName, writeActorName } from "@/lib/actor";
-import { CATEGORIES } from "@/lib/defaults";
+import { CATEGORIES, seasonBannerForMonth } from "@/lib/defaults";
+import { expiryLabel, isExpiredDoc, isExpiringSoon } from "@/lib/docs";
+import { readSeasonPreviewMonth, readShowCoupang } from "@/lib/prefs";
 import { spotPath } from "@/lib/storage";
 import type { OfficeStore } from "@/lib/store";
 import {
@@ -45,11 +47,26 @@ export function InventoryPanel({ store, onLocate }: Props) {
   const [reqItem, setReqItem] = useState<InventoryItem | null>(null);
   const [reqQty, setReqQty] = useState(1);
   const [reqNote, setReqNote] = useState("");
+  const [editDoc, setEditDoc] = useState<InventoryItem | null>(null);
+  const [docParty, setDocParty] = useState("");
+  const [docExpiry, setDocExpiry] = useState("");
 
   const lowItems = useMemo(
     () => sortByUrgency(store.inventory.filter((i) => stockLevel(i) !== "ok")),
     [store.inventory]
   );
+
+  const expiringDocs = useMemo(
+    () =>
+      store.inventory.filter(
+        (i) => i.category === "서류" && (isExpiredDoc(i) || isExpiringSoon(i))
+      ),
+    [store.inventory]
+  );
+
+  const showCoupang = readShowCoupang();
+  const seasonMonth = readSeasonPreviewMonth() ?? new Date().getMonth() + 1;
+  const seasonMessage = seasonBannerForMonth(seasonMonth);
 
   const pending = useMemo(
     () => store.requests.filter((r) => r.status === "pending"),
@@ -75,7 +92,8 @@ export function InventoryPanel({ store, onLocate }: Props) {
       return (
         item.name.toLowerCase().includes(needle) ||
         item.category.toLowerCase().includes(needle) ||
-        place.toLowerCase().includes(needle)
+        place.toLowerCase().includes(needle) ||
+        (item.counterparty ?? "").toLowerCase().includes(needle)
       );
     });
   }, [category, filter, q, store.inventory, store.spots]);
@@ -131,6 +149,17 @@ export function InventoryPanel({ store, onLocate }: Props) {
         </p>
       </div>
 
+      {seasonMessage && (
+        <div className="w-full rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-left">
+          <p className="text-sm font-medium text-teal-950">{seasonMessage}</p>
+          <p className="mt-0.5 text-[11px] text-teal-800/70">
+            {readSeasonPreviewMonth() != null
+              ? `미리보기 · ${seasonMonth}월`
+              : `${seasonMonth}월 안내`}
+          </p>
+        </div>
+      )}
+
       {lowItems.length > 0 && filter === "all" && (
         <button
           type="button"
@@ -142,6 +171,21 @@ export function InventoryPanel({ store, onLocate }: Props) {
           </p>
           <p className="mt-0.5 text-xs text-orange-800/80">
             최소 재고 이하 품목을 모아 보고 채우거나 요청하세요
+          </p>
+        </button>
+      )}
+
+      {expiringDocs.length > 0 && filter === "all" && (
+        <button
+          type="button"
+          onClick={() => setCategory("서류")}
+          className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-left"
+        >
+          <p className="text-sm font-medium text-rose-950">
+            서류 만료·임박 {expiringDocs.length}건
+          </p>
+          <p className="mt-0.5 text-xs text-rose-800/80">
+            거래처·만료일을 확인하고 갱신하세요
           </p>
         </button>
       )}
@@ -331,6 +375,25 @@ export function InventoryPanel({ store, onLocate }: Props) {
                     <p className="mt-2 text-sm font-medium text-teal-800 leading-snug">
                       {placeLabel(item)}
                     </p>
+                    {(item.counterparty || item.expires_on) && (
+                      <p className="mt-1 text-xs text-slate-600">
+                        {item.counterparty ? `거래처 ${item.counterparty}` : ""}
+                        {item.counterparty && item.expires_on ? " · " : ""}
+                        {expiryLabel(item) && (
+                          <span
+                            className={
+                              isExpiredDoc(item)
+                                ? "text-rose-700 font-medium"
+                                : isExpiringSoon(item)
+                                  ? "text-amber-700 font-medium"
+                                  : ""
+                            }
+                          >
+                            {expiryLabel(item)}
+                          </span>
+                        )}
+                      </p>
+                    )}
                     <p className="mt-1 text-sm text-slate-700">
                       {stockLabel(item)}
                       {item.min_stock > 0 && (
@@ -403,8 +466,21 @@ export function InventoryPanel({ store, onLocate }: Props) {
                       위치에서 보기
                     </button>
                   )}
+                  {item.category === "서류" && (
+                    <button
+                      type="button"
+                      className="text-xs rounded-lg bg-white border border-slate-200 px-2.5 py-1"
+                      onClick={() => {
+                        setEditDoc(item);
+                        setDocParty(item.counterparty ?? "");
+                        setDocExpiry(item.expires_on?.slice(0, 10) ?? "");
+                      }}
+                    >
+                      거래처·만료
+                    </button>
+                  )}
                 </div>
-                {level !== "ok" && item.category !== "서류" && (
+                {showCoupang && level !== "ok" && item.category !== "서류" && (
                   <CoupangDeals keyword={item.name} />
                 )}
               </li>
@@ -502,6 +578,57 @@ export function InventoryPanel({ store, onLocate }: Props) {
                 onClick={() => void confirmRequest()}
               >
                 요청 보내기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editDoc && (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-4 space-y-3 shadow-xl">
+            <h3 className="font-semibold text-slate-900">
+              「{editDoc.name}」 서류 정보
+            </h3>
+            <label className="block text-xs text-slate-600">
+              거래처·업체
+              <input
+                value={docParty}
+                onChange={(e) => setDocParty(e.target.value)}
+                placeholder="예: 한빛솔루션"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-xs text-slate-600">
+              만료일
+              <input
+                type="date"
+                value={docExpiry}
+                onChange={(e) => setDocExpiry(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm"
+                onClick={() => setEditDoc(null)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-teal-800 text-white py-2.5 text-sm font-medium"
+                onClick={() => {
+                  void store
+                    .updateInventory(editDoc.id, {
+                      counterparty: docParty.trim() || null,
+                      expires_on: docExpiry.trim() || null,
+                    })
+                    .then(() => setEditDoc(null));
+                }}
+              >
+                저장
               </button>
             </div>
           </div>

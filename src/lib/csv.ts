@@ -9,6 +9,8 @@ const HEADERS = [
   "unit",
   "location",
   "notes",
+  "counterparty",
+  "expires_on",
 ] as const;
 
 function escapeCell(v: string | number | null | undefined): string {
@@ -41,6 +43,8 @@ export function inventoryToCsv(
         escapeCell(item.unit),
         escapeCell(placeFor(item, spots)),
         escapeCell(item.notes),
+        escapeCell(item.counterparty),
+        escapeCell(item.expires_on),
       ].join(",")
     );
   }
@@ -66,6 +70,8 @@ export type CsvInventoryRow = {
   unit: string;
   location: string;
   notes: string | null;
+  counterparty: string | null;
+  expires_on: string | null;
 };
 
 function parseLine(line: string): string[] {
@@ -87,7 +93,6 @@ function parseLine(line: string): string[] {
       inQ = true;
     } else if (ch === ",") {
       out.push(cur);
-      cur = "";
     } else {
       cur += ch;
     }
@@ -104,7 +109,8 @@ export function parseInventoryCsv(text: string): CsvInventoryRow[] {
   if (lines.length < 2) return [];
 
   const headerCells = parseLine(lines[0]).map((h) => h.trim().toLowerCase());
-  const alias: Record<string, (typeof HEADERS)[number] | "name"> = {
+  type Col = (typeof HEADERS)[number];
+  const alias: Record<string, Col> = {
     name: "name",
     이름: "name",
     품명: "name",
@@ -124,9 +130,15 @@ export function parseInventoryCsv(text: string): CsvInventoryRow[] {
     notes: "notes",
     메모: "notes",
     비고: "notes",
+    counterparty: "counterparty",
+    거래처: "counterparty",
+    업체: "counterparty",
+    expires_on: "expires_on",
+    만료일: "expires_on",
+    만료: "expires_on",
   };
 
-  const idx: Partial<Record<(typeof HEADERS)[number], number>> = {};
+  const idx: Partial<Record<Col, number>> = {};
   headerCells.forEach((h, i) => {
     const key = alias[h];
     if (key) idx[key] = i;
@@ -151,6 +163,10 @@ export function parseInventoryCsv(text: string): CsvInventoryRow[] {
       unit: (idx.unit != null ? cells[idx.unit] : "")?.trim() || "개",
       location: (idx.location != null ? cells[idx.location] : "")?.trim() || "사무실",
       notes: (idx.notes != null ? cells[idx.notes] : "")?.trim() || null,
+      counterparty:
+        (idx.counterparty != null ? cells[idx.counterparty] : "")?.trim() || null,
+      expires_on:
+        (idx.expires_on != null ? cells[idx.expires_on] : "")?.trim() || null,
     });
   }
   return rows;

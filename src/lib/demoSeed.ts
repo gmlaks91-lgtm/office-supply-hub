@@ -13,6 +13,8 @@ export type DemoItemSpec = {
   category: string;
   /** 있으면 해당 이름 서랍에 넣음 (없으면 칸 자체) */
   drawer?: string;
+  counterparty?: string;
+  expires_on?: string;
 };
 
 export const DEMO_SEEDED_FLAG = "office_demo_seeded_v1";
@@ -42,12 +44,88 @@ export const DEMO_BY_MAP_KEY: Record<string, DemoItemSpec[]> = {
     { name: "스탬플러 심", quantity: 4, min_stock: 5, unit: "통", category: "문구", drawer: "3번 서랍" },
   ],
   "cab-right": [
-    { name: "계약서 양식", quantity: 12, min_stock: 5, unit: "부", category: "서류", drawer: "1번 서랍" },
-    { name: "NDA 양식", quantity: 8, min_stock: 5, unit: "부", category: "서류", drawer: "1번 서랍" },
-    { name: "세금계산서 철", quantity: 4, min_stock: 3, unit: "부", category: "서류", drawer: "2번 서랍" },
-    { name: "입사 서류 세트", quantity: 6, min_stock: 3, unit: "부", category: "서류", drawer: "2번 서랍" },
-    { name: "명함 신청서", quantity: 15, min_stock: 10, unit: "부", category: "서류", drawer: "3번 서랍" },
-    { name: "휴가원", quantity: 20, min_stock: 10, unit: "부", category: "서류", drawer: "3번 서랍" },
+    {
+      name: "수임 계약서 양식",
+      quantity: 15,
+      min_stock: 10,
+      unit: "부",
+      category: "서류",
+      drawer: "1번 서랍",
+    },
+    {
+      name: "위임장 양식",
+      quantity: 18,
+      min_stock: 10,
+      unit: "부",
+      category: "서류",
+      drawer: "1번 서랍",
+    },
+    {
+      name: "견적서 양식",
+      quantity: 12,
+      min_stock: 10,
+      unit: "부",
+      category: "서류",
+      drawer: "2번 서랍",
+    },
+    {
+      name: "지출결의서 양식",
+      quantity: 14,
+      min_stock: 10,
+      unit: "부",
+      category: "서류",
+      drawer: "2번 서랍",
+    },
+    {
+      name: "클리어파일",
+      quantity: 16,
+      min_stock: 10,
+      unit: "개",
+      category: "서류",
+      drawer: "3번 서랍",
+    },
+    {
+      name: "서류 반송 봉투",
+      quantity: 20,
+      min_stock: 15,
+      unit: "장",
+      category: "서류",
+      drawer: "3번 서랍",
+    },
+  ],
+  "client-cab": [
+    {
+      name: "거래처 장부 바인더",
+      quantity: 6,
+      min_stock: 5,
+      unit: "개",
+      category: "서류",
+      drawer: "가~사 거래처",
+    },
+    {
+      name: "서류 반송 봉투",
+      quantity: 18,
+      min_stock: 15,
+      unit: "장",
+      category: "서류",
+      drawer: "가~사 거래처",
+    },
+    {
+      name: "거래처 장부 바인더",
+      quantity: 5,
+      min_stock: 5,
+      unit: "개",
+      category: "서류",
+      drawer: "아~하 거래처",
+    },
+    {
+      name: "클리어파일",
+      quantity: 8,
+      min_stock: 10,
+      unit: "개",
+      category: "서류",
+      drawer: "아~하 거래처",
+    },
   ],
   "meeting-table": [
     { name: "회의용 볼펜", quantity: 10, min_stock: 8, unit: "자루", category: "문구" },
@@ -62,9 +140,11 @@ export const DEMO_BY_MAP_KEY: Record<string, DemoItemSpec[]> = {
     { name: "용지걸이 클립", quantity: 2, min_stock: 1, unit: "개", category: "인쇄" },
   ],
   "toner-bin": [
-    { name: "토너 (흑백)", quantity: 2, min_stock: 1, unit: "개", category: "인쇄" },
-    { name: "토너 (컬러)", quantity: 1, min_stock: 1, unit: "개", category: "인쇄" },
-    { name: "A4 복사용지", quantity: 5, min_stock: 3, unit: "팩", category: "인쇄" },
+    { name: "토너 (흑백)", quantity: 0, min_stock: 2, unit: "개", category: "인쇄" },
+    { name: "토너 (컬러)", quantity: 2, min_stock: 1, unit: "개", category: "인쇄" },
+    { name: "A4 복사용지", quantity: 1, min_stock: 3, unit: "팩", category: "인쇄" },
+    { name: "봉투(대)", quantity: 25, min_stock: 20, unit: "장", category: "인쇄" },
+    { name: "인주", quantity: 3, min_stock: 2, unit: "개", category: "인쇄" },
   ],
   "steel-a": [
     { name: "AA 건전지", quantity: 4, min_stock: 2, unit: "팩", category: "전자", drawer: "1번 서랍" },
@@ -194,6 +274,8 @@ export function buildDemoInventory(spots: StorageSpot[]): InventoryItem[] {
         location,
         storage_spot_id: spotId,
         notes: "예시 데이터",
+        counterparty: spec.counterparty ?? null,
+        expires_on: spec.expires_on ?? null,
         created_at: now,
         updated_at: now,
       });

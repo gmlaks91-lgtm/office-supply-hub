@@ -1,26 +1,36 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { readActorName, writeActorName } from "@/lib/actor";
 import { downloadCsv, inventoryToCsv } from "@/lib/csv";
+import { seasonBannerForMonth } from "@/lib/defaults";
+import {
+  readSeasonPreviewMonth,
+  readShowCoupang,
+  writeSeasonPreviewMonth,
+  writeShowCoupang,
+} from "@/lib/prefs";
 import type { OfficeStore } from "@/lib/store";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 type Props = { store: OfficeStore };
 
+function initialSeasonPreview(): string {
+  const m = readSeasonPreviewMonth();
+  return m == null ? "auto" : String(m);
+}
+
 export function SettingsPanel({ store }: Props) {
   const configured = isSupabaseConfigured();
   const [busy, setBusy] = useState(false);
-  const [actor, setActor] = useState("");
+  const [actor, setActor] = useState(() => readActorName());
   const [csvMsg, setCsvMsg] = useState<string | null>(null);
   const [orgName, setOrgName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [orgMsg, setOrgMsg] = useState<string | null>(null);
+  const [showCoupang, setShowCoupang] = useState(() => readShowCoupang());
+  const [seasonPreview, setSeasonPreview] = useState(initialSeasonPreview);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setActor(readActorName());
-  }, []);
 
   async function onReseed() {
     if (
@@ -151,6 +161,85 @@ export function SettingsPanel({ store }: Props) {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+        <h3 className="font-medium text-slate-900">시즌 배너 미리보기</h3>
+        <p className="text-sm text-slate-600">
+          재고 탭 상단 신고 시즌 안내를 시연용으로 특정 월처럼 보이게 합니다.
+        </p>
+        <select
+          value={seasonPreview}
+          onChange={(e) => {
+            const v = e.target.value;
+            setSeasonPreview(v);
+            if (v === "auto") writeSeasonPreviewMonth(null);
+            else writeSeasonPreviewMonth(Number(v));
+          }}
+          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm bg-white"
+        >
+          <option value="auto">실제 이번 달</option>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+            <option key={m} value={String(m)}>
+              {m}월
+              {seasonBannerForMonth(m) ? " (배너 있음)" : ""}
+            </option>
+          ))}
+        </select>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+        <h3 className="font-medium text-slate-900">쿠팡 최저가 추천</h3>
+        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+          <span>쿠팡 최저가 추천 보기</span>
+          <input
+            type="checkbox"
+            checked={showCoupang}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setShowCoupang(on);
+              writeShowCoupang(on);
+            }}
+            className="h-4 w-4 accent-teal-800"
+          />
+        </label>
+        <p className="text-[11px] text-slate-400">
+          기본 꺼짐 · 켜면 부족·주문 목록에만 표시됩니다
+        </p>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+        <h3 className="font-medium text-slate-900">부족 알림 (추후 예정)</h3>
+        <p className="text-sm text-slate-600">
+          Slack·메일 자동 알림은 향후 계획입니다. 지금은 앱 안 「부족·주문」 목록으로
+          확인하세요.
+        </p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setCsvMsg(null);
+            void store
+              .notifyLowStockNow(true)
+              .then((r) => {
+                if (!r.configured) {
+                  setCsvMsg(
+                    "추후 예정 · 키가 없으면 전송되지 않습니다 (앱 안 목록으로 확인)"
+                  );
+                  return;
+                }
+                setCsvMsg(r.message || (r.ok ? "알림을 보냈습니다" : "전송 실패"));
+              })
+              .catch((e) =>
+                setCsvMsg(e instanceof Error ? e.message : "알림 실패")
+              )
+              .finally(() => setBusy(false));
+          }}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+        >
+          알림 테스트 (추후 예정)
+        </button>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
         <h3 className="font-medium text-slate-900">내 이름</h3>
         <p className="text-sm text-slate-600">
           사용·요청 기록에 붙습니다. 여러 사람이 같은 기기를 쓰면 쓸 때마다 바꿀 수
@@ -202,8 +291,8 @@ export function SettingsPanel({ store }: Props) {
         </div>
         {csvMsg && <p className="text-xs text-slate-600">{csvMsg}</p>}
         <p className="text-[11px] text-slate-400">
-          열: name, category, quantity, min_stock, unit, location, notes (한글 헤더
-          이름/수량/위치 등도 인식)
+          열: name, category, quantity, min_stock, unit, location, notes,
+          counterparty, expires_on (거래처/만료일 한글 헤더도 인식)
         </p>
       </section>
 
@@ -224,10 +313,8 @@ export function SettingsPanel({ store }: Props) {
         )}
         {store.error && <p className="text-xs text-red-600">{store.error}</p>}
         <p className="text-xs text-slate-500">
-          이메일·Slack 부족 알림은{" "}
-          <code className="bg-slate-100 px-1 rounded">RESEND_API_KEY</code> 또는 Slack
-          Incoming Webhook을 붙일 때 연결하면 됩니다. 지금은 앱 안 「부족·주문」 목록으로
-          바로 확인합니다.
+          Slack·메일 부족 알림 연동은 추후 예정입니다. 지금은 앱 안 「부족·주문」으로
+          확인합니다.
         </p>
       </section>
 
@@ -266,6 +353,11 @@ export function SettingsPanel({ store }: Props) {
           HTTPS로 배포한 주소를 열고 홈 화면에 추가하면 앱처럼 쓸 수 있습니다.
         </p>
       </section>
+
+      <p className="text-[11px] text-slate-400 leading-relaxed px-1 pb-2">
+        현재는 시연용으로 로그인 없이 운영됩니다. 실제 거래처 정보나 서류 내용은
+        입력하지 마세요.
+      </p>
     </div>
   );
 }

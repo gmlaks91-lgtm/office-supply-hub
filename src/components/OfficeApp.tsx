@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { InventoryPanel } from "@/components/InventoryPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { SpotScanner } from "@/components/SpotScanner";
 import { StoragePanel } from "@/components/StoragePanel";
 import { useOfficeStore } from "@/lib/store";
 import type { TabId } from "@/lib/types";
@@ -17,6 +18,12 @@ export function OfficeApp() {
   const store = useOfficeStore();
   const [tab, setTab] = useState<TabId>("location");
   const [focusSpotId, setFocusSpotId] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+
+  const openSpot = useCallback((spotId: string) => {
+    setFocusSpotId(spotId);
+    setTab("location");
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
@@ -51,9 +58,18 @@ export function OfficeApp() {
           <p className="text-[11px] tracking-[0.18em] uppercase text-teal-700/80">
             Office Supply Hub
           </p>
-          <h1 className="text-lg font-semibold leading-tight">
-            {store.org ? `${store.org.name} · 위치 찾기` : "회사 비품 · 위치 찾기"}
-          </h1>
+          <div className="flex items-start justify-between gap-2">
+            <h1 className="text-lg font-semibold leading-tight">
+              {store.org ? `${store.org.name} · 위치 찾기` : "회사 비품 · 위치 찾기"}
+            </h1>
+            <button
+              type="button"
+              onClick={() => setScanOpen(true)}
+              className="shrink-0 rounded-xl border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-900"
+            >
+              QR 스캔
+            </button>
+          </div>
           {store.usingLocal && (
             <p className="mt-1 text-[11px] text-amber-700">
               로컬 저장 중 · 설정에서 Supabase 연결 안내 확인
@@ -67,16 +83,16 @@ export function OfficeApp() {
           <StoragePanel store={store} focusSpotId={focusSpotId} />
         )}
         {tab === "inventory" && (
-          <InventoryPanel
-            store={store}
-            onLocate={(spotId) => {
-              setFocusSpotId(spotId);
-              setTab("location");
-            }}
-          />
+          <InventoryPanel store={store} onLocate={openSpot} />
         )}
         {tab === "settings" && <SettingsPanel store={store} />}
       </main>
+
+      <SpotScanner
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onSpot={openSpot}
+      />
 
       <nav className="fixed bottom-0 inset-x-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-lg grid grid-cols-3">

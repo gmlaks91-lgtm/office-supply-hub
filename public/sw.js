@@ -1,5 +1,5 @@
 /* Office Supply Hub — basic PWA SW */
-const CACHE = "office-supply-v1";
+const CACHE = "office-supply-v2";
 const PRECACHE = ["/", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -19,6 +19,23 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
+
+  // 페이지 이동은 네트워크 우선 → 새 배포가 바로 보이게
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          const copy = res.clone();
+          if (res.ok) {
+            caches.open(CACHE).then((cache) => cache.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((cached) => cached || caches.match("/")))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(req).then((cached) => {
       const fetched = fetch(req)
