@@ -83,12 +83,12 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
     id: "standard",
     name: "표준형",
     description:
-      "팀 공간 아래 입구 · 작은 정사각 탕비실을 포함한 직사각 사무실 · 위 회의·창고",
+      "팀 공간 아래 입구 · 왼쪽 아래 정사각 탕비실을 포함한 직사각 사무실 · 위 회의·창고",
     /**
      * - 위: 가로로 긴 창고
-     * - 왼쪽 큰 직사각형 = 사무실, 그 안(왼쪽 위) 작은 정사각 = 탕비실
+     * - 왼쪽 큰 직사각형 = 사무실, 그 안(왼쪽 아래) 작은 정사각 = 탕비실
      * - 오른쪽: 위=회의실, 아래=팀 공간, 팀 공간 밑=입구(안쪽으로 ▲)
-     * - 입구 바로 왼쪽: 테이블
+     * - 입구 바로 왼쪽: 테이블 → 더 왼쪽: 탕비실
      */
     rooms: [
       {
@@ -100,7 +100,7 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         h: 18,
         floor: "#e8e0d4",
       },
-      // 사무실을 먼저 그리고, 그 안 왼쪽 위 작은 정사각 탕비실을 위에 그림
+      // 사무실을 먼저 그리고, 그 안 왼쪽 아래 작은 정사각 탕비실을 위에 그림
       {
         id: "office",
         label: "사무실",
@@ -114,7 +114,7 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         id: "pantry",
         label: "탕비실",
         x: 2,
-        y: 22,
+        y: 60,
         w: 16,
         h: 16,
         floor: "#f5e6d4",
@@ -138,22 +138,22 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         floor: "#dceee4",
       },
     ],
-    // 팀 공간 바로 아래 · 안으로 들어가는 방향
-    entrance: { name: "입구", x: 70, y: 84, w: 22, h: 10 },
+    // 팀 공간 바로 아래(왼쪽 정렬) · 안쪽으로 ▲ · 왼쪽=테이블·탕비실
+    entrance: { name: "입구", x: 64, y: 84, w: 22, h: 10 },
     furniture: [
-      // 입구 바로 왼쪽 테이블
+      // 입구 바로 왼쪽 테이블 (탕비실과 입구 사이)
       {
         mapKey: "meeting-table",
         name: "입구 옆 테이블",
         area: "사무실",
         kind: "meeting",
-        x: 46,
-        y: 80,
+        x: 22,
+        y: 78,
         w: 18,
         h: 10,
         color: "#8b7355",
       },
-      // 사무실 (탕비실 정사각을 포함한 직사각 안)
+      // 사무실 (탕비실 정사각을 포함한 직사각 안 · 위쪽)
       {
         mapKey: "cab-left",
         name: "사무실 문구 캐비닛",
@@ -184,7 +184,7 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         area: "사무실",
         kind: "printer",
         x: 24,
-        y: 50,
+        y: 46,
         w: 12,
         h: 12,
         color: "#6a6a6a",
@@ -195,7 +195,7 @@ export const OFFICE_LAYOUTS: OfficeLayoutTemplate[] = [
         area: "사무실",
         kind: "bin",
         x: 40,
-        y: 50,
+        y: 46,
         w: 12,
         h: 12,
         color: "#c45c26",
